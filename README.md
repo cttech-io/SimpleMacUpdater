@@ -10,9 +10,9 @@ A single-script macOS maintenance tool that keeps your packages, apps, and OS up
 | Clean up package cache | Homebrew | Removes stale downloads |
 | Update cheat-sheet cache | [tldr](https://tldr.sh) | Skipped if not installed |
 | Update App Store apps | [mas](https://github.com/mas-cli/mas) | Skipped if not installed |
-| Check & install macOS updates | `softwareupdate` | Prompts before installing |
+| Check & install macOS updates | `softwareupdate` | Prompts before installing — only if updates are found |
 
-A summary of what ran (and what was skipped) is printed at the end of each run.
+The summary printed at the end of each run shows the number of packages/apps updated per category and the total time elapsed.
 
 ## Usage
 
