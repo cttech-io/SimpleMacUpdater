@@ -6,16 +6,26 @@ START_TIME=$SECONDS
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 BOLD='\033[1m'
+DIM='\033[2m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 RED='\033[0;31m'
 RESET='\033[0m'
 
-header()  { echo -e "\n${BOLD}${CYAN}==> $*${RESET}"; }
-success() { echo -e "${GREEN}✔  $*${RESET}"; }
-skip()    { echo -e "${YELLOW}–  $*${RESET}"; }
-fail()    { echo -e "${RED}✘  $*${RESET}"; }
+# ── Output helpers ────────────────────────────────────────────────────────────
+banner() {
+    local dt
+    dt=$(date '+%a %d %b %Y  ·  %H:%M')
+    echo -e "\n${BOLD}${CYAN}  macOS Updater${RESET}"
+    echo -e "  ${DIM}${dt}${RESET}"
+    echo -e "${CYAN}  ────────────────────────────────────────${RESET}"
+}
+
+header()  { echo -e "\n${BOLD}${CYAN}  ▸ $*${RESET}"; }
+success() { echo -e "  ${GREEN}✔${RESET}  $*"; }
+skip()    { echo -e "  ${YELLOW}–${RESET}  $*"; }
+fail()    { echo -e "  ${RED}✘${RESET}  $*"; }
 
 # ── Summary tracking ─────────────────────────────────────────────────────────
 SUMMARY=()
@@ -32,24 +42,31 @@ format_duration() {
     fi
 }
 
+section_time() { format_duration "$(( SECONDS - $1 ))"; }
+
 print_summary() {
     local elapsed duration
     elapsed=$(( SECONDS - START_TIME ))
     duration=$(format_duration "$elapsed")
 
-    echo -e "\n${BOLD}────────────────────────────────────────${RESET}"
-    echo -e "${BOLD}  Update Summary${RESET}"
-    echo -e "${BOLD}────────────────────────────────────────${RESET}"
+    echo -e "\n${BOLD}${CYAN}  ┌─ Summary ──────────────────────────────${RESET}"
+    echo -e "${CYAN}  │${RESET}"
     for line in "${SUMMARY[@]}"; do
-        echo -e "  $line"
+        echo -e "${CYAN}  │${RESET}  ${line}"
     done
-    echo -e "${BOLD}────────────────────────────────────────${RESET}"
-    echo -e "  ${BOLD}Time elapsed:${RESET} ${duration}"
-    echo -e "${BOLD}────────────────────────────────────────${RESET}\n"
+    echo -e "${CYAN}  │${RESET}"
+    echo -e "${BOLD}${CYAN}  ├────────────────────────────────────────${RESET}"
+    echo -e "${CYAN}  │${RESET}  ${DIM}Time elapsed${RESET}  ${BOLD}${duration}${RESET}"
+    echo -e "${BOLD}${CYAN}  └────────────────────────────────────────${RESET}\n"
 }
+
+# ── Start ─────────────────────────────────────────────────────────────────────
+banner
 
 # ── Homebrew ─────────────────────────────────────────────────────────────────
 if command -v brew &>/dev/null; then
+    T=$SECONDS
+
     header "Updating Homebrew package list"
     brew update
 
@@ -60,15 +77,16 @@ if command -v brew &>/dev/null; then
     brew upgrade
     success "Homebrew packages upgraded"
 
-    if (( BREW_COUNT > 0 )); then
-        add_summary "${GREEN}✔${RESET}  Homebrew: ${BOLD}${BREW_COUNT}${RESET} package(s) upgraded"
-    else
-        add_summary "${GREEN}✔${RESET}  Homebrew: already up to date"
-    fi
-
     header "Cleaning up Homebrew cache"
     brew cleanup
     success "Homebrew cache cleaned"
+
+    BREW_TIME=$(section_time $T)
+    if (( BREW_COUNT > 0 )); then
+        add_summary "${GREEN}✔${RESET}  Homebrew: ${BOLD}${BREW_COUNT}${RESET} package(s) upgraded  ${DIM}(${BREW_TIME})${RESET}"
+    else
+        add_summary "${GREEN}✔${RESET}  Homebrew: already up to date  ${DIM}(${BREW_TIME})${RESET}"
+    fi
     add_summary "${GREEN}✔${RESET}  Homebrew cache cleaned"
 else
     skip "Homebrew not found — skipping"
@@ -77,16 +95,18 @@ fi
 
 # ── tldr ─────────────────────────────────────────────────────────────────────
 if command -v tldr &>/dev/null; then
+    T=$SECONDS
     header "Updating tldr cache"
     tldr -u
     success "tldr cache updated"
-    add_summary "${GREEN}✔${RESET}  tldr cache updated"
+    add_summary "${GREEN}✔${RESET}  tldr cache updated  ${DIM}($(section_time $T))${RESET}"
 else
     skip "tldr not found — skipping"
 fi
 
 # ── Mac App Store (mas) ───────────────────────────────────────────────────────
 if command -v mas &>/dev/null; then
+    T=$SECONDS
     header "Updating Mac App Store apps"
 
     MAS_OUTDATED=$(mas outdated 2>/dev/null || true)
@@ -94,20 +114,22 @@ if command -v mas &>/dev/null; then
 
     if mas upgrade; then
         success "Mac App Store apps updated"
+        MAS_TIME=$(section_time $T)
         if (( MAS_COUNT > 0 )); then
-            add_summary "${GREEN}✔${RESET}  Mac App Store: ${BOLD}${MAS_COUNT}${RESET} app(s) updated"
+            add_summary "${GREEN}✔${RESET}  Mac App Store: ${BOLD}${MAS_COUNT}${RESET} app(s) updated  ${DIM}(${MAS_TIME})${RESET}"
         else
-            add_summary "${GREEN}✔${RESET}  Mac App Store: already up to date"
+            add_summary "${GREEN}✔${RESET}  Mac App Store: already up to date  ${DIM}(${MAS_TIME})${RESET}"
         fi
     else
         fail "mas upgrade reported an error"
-        add_summary "${RED}✘${RESET}  Mac App Store update failed"
+        add_summary "${RED}✘${RESET}  Mac App Store update failed  ${DIM}($(section_time $T))${RESET}"
     fi
 else
     skip "mas not found — skipping App Store updates (install with: brew install mas)"
 fi
 
 # ── macOS software updates ────────────────────────────────────────────────────
+T=$SECONDS
 header "Checking for macOS updates"
 MACOS_LIST=$(softwareupdate --list 2>&1)
 echo "$MACOS_LIST"
@@ -115,19 +137,19 @@ MACOS_COUNT=$(echo "$MACOS_LIST" | grep -cE '^\* ' || true)
 
 if (( MACOS_COUNT == 0 )); then
     skip "No macOS updates available"
-    add_summary "${YELLOW}–${RESET}  macOS: no updates available"
+    add_summary "${YELLOW}–${RESET}  macOS: no updates available  ${DIM}($(section_time $T))${RESET}"
 else
     echo
-    read -rp "$(echo -e "${BOLD}Install available macOS updates? [y/N]: ${RESET}")" OS_UPDATE
+    read -rp "$(echo -e "${BOLD}  Install available macOS updates? [y/N]: ${RESET}")" OS_UPDATE
     if [[ "$OS_UPDATE" =~ ^[Yy]$ ]]; then
         echo
         header "Installing macOS updates"
         sudo softwareupdate --install --all
         success "macOS updates installed"
-        add_summary "${GREEN}✔${RESET}  macOS: ${BOLD}${MACOS_COUNT}${RESET} update(s) installed"
+        add_summary "${GREEN}✔${RESET}  macOS: ${BOLD}${MACOS_COUNT}${RESET} update(s) installed  ${DIM}($(section_time $T))${RESET}"
     else
         skip "macOS updates skipped"
-        add_summary "${YELLOW}–${RESET}  macOS: ${BOLD}${MACOS_COUNT}${RESET} update(s) available (skipped)"
+        add_summary "${YELLOW}–${RESET}  macOS: ${BOLD}${MACOS_COUNT}${RESET} update(s) available (skipped)  ${DIM}($(section_time $T))${RESET}"
     fi
 fi
 

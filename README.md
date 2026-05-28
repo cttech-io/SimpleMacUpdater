@@ -12,7 +12,7 @@ A single-script macOS maintenance tool that keeps your packages, apps, and OS up
 | Update App Store apps | [mas](https://github.com/mas-cli/mas) | Skipped if not installed |
 | Check & install macOS updates | `softwareupdate` | Prompts before installing — only if updates are found |
 
-The summary printed at the end of each run shows the number of packages/apps updated per category and the total time elapsed.
+The summary printed at the end of each run shows the number of packages/apps updated per category, the time taken per category, and the total elapsed time.
 
 ## Usage
 
