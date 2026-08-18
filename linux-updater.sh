@@ -78,6 +78,11 @@ for candidate in apt-get dnf yum pacman zypper apk; do
     fi
 done
 
+# Every section is individually guarded, but if something unforeseen still
+# kills the run, print what was accomplished rather than exiting silently.
+# print_summary only ever prints once, so the normal path is unaffected.
+trap print_summary EXIT
+
 banner "Linux Updater" "$(hostname -s) · ${DISTRO} · $(uname -m)"
 if [[ -n "$PKG_MGR" ]]; then
     note "  Package manager: ${PKG_MGR}"
@@ -162,8 +167,14 @@ pkg_clean() {
 if [[ -n "$PKG_MGR" ]]; then
     T=$SECONDS
     header "Refreshing ${PKG_MGR} package list"
-    pkg_refresh
-    success "Package list refreshed"
+    if pkg_refresh; then
+        success "Package list refreshed"
+    else
+        # A single unreachable mirror shouldn't end the run — carry on and
+        # report against whatever metadata we already have.
+        warn "Package list refresh reported an error — continuing with cached metadata"
+        sum_warn "${PKG_MGR}: metadata refresh failed"
+    fi
 
     PKG_COUNT=$(pkg_pending)
     PKG_COUNT=${PKG_COUNT:-0}
@@ -211,9 +222,13 @@ if [[ "$PKG_MGR" == "apt-get" ]] && (( ! REPORT_ONLY )); then
             skip "Orphan removal skipped (needs a human, even with --yes)"
             sum_skip "${BOLD}${ORPHAN_COUNT}${RESET} orphaned package(s) not removed"
         elif confirm "Remove these orphaned packages?"; then
-            $SUDO apt-get -y autoremove
-            success "Orphaned packages removed"
-            sum_ok "${BOLD}${ORPHAN_COUNT}${RESET} orphaned package(s) removed"
+            if $SUDO apt-get -y autoremove; then
+                success "Orphaned packages removed"
+                sum_ok "${BOLD}${ORPHAN_COUNT}${RESET} orphaned package(s) removed"
+            else
+                fail "Orphan removal reported an error"
+                sum_fail "Orphan removal failed"
+            fi
         else
             skip "Orphaned packages kept"
             sum_skip "${BOLD}${ORPHAN_COUNT}${RESET} orphaned package(s) kept"
@@ -236,9 +251,13 @@ if command -v snap &>/dev/null; then
         if (( REPORT_ONLY )); then
             sum_warn "snap: ${BOLD}${SNAP_COUNT}${RESET} pending  ${DIM}($(section_time $T))${RESET}"
         else
-            $SUDO snap refresh
-            success "Snaps refreshed"
-            sum_ok "snap: ${BOLD}${SNAP_COUNT}${RESET} refreshed  ${DIM}($(section_time $T))${RESET}"
+            if $SUDO snap refresh; then
+                success "Snaps refreshed"
+                sum_ok "snap: ${BOLD}${SNAP_COUNT}${RESET} refreshed  ${DIM}($(section_time $T))${RESET}"
+            else
+                fail "Snap refresh reported an error"
+                sum_fail "snap: refresh failed  ${DIM}($(section_time $T))${RESET}"
+            fi
         fi
     fi
 fi
@@ -247,20 +266,59 @@ fi
 if command -v flatpak &>/dev/null; then
     T=$SECONDS
     header "Checking flatpaks"
-    FLAT_PENDING=$(flatpak remote-ls --updates --columns=application 2>/dev/null || true)
-    FLAT_COUNT=$(count_lines "$FLAT_PENDING")
+
+    # flatpak keeps two separate installations: system-wide and per-user. A
+    # plain `flatpak update` run as a normal user tries to do both, and the
+    # system half asks polkit for authorisation — which nothing can answer over
+    # SSH, so it dies with "Deploy not allowed for user". Drive each scope
+    # explicitly with the privileges it actually needs.
+    FLAT_USER=$(flatpak remote-ls --updates --user --columns=application 2>/dev/null || true)
+    FLAT_SYS=$(flatpak remote-ls --updates --system --columns=application 2>/dev/null || true)
+    FLAT_USER_COUNT=$(count_lines "$FLAT_USER")
+    FLAT_SYS_COUNT=$(count_lines "$FLAT_SYS")
+    FLAT_COUNT=$(( FLAT_USER_COUNT + FLAT_SYS_COUNT ))
 
     if (( FLAT_COUNT == 0 )); then
         skip "Flatpaks up to date"
         sum_ok "flatpak: already up to date  ${DIM}($(section_time $T))${RESET}"
     else
-        echo "$FLAT_PENDING" | sed 's/^/    /'
+        if (( FLAT_USER_COUNT > 0 )); then
+            note "  user installation:"
+            echo "$FLAT_USER" | sed 's/^/    /'
+        fi
+        if (( FLAT_SYS_COUNT > 0 )); then
+            note "  system installation:"
+            echo "$FLAT_SYS" | sed 's/^/    /'
+        fi
+
         if (( REPORT_ONLY )); then
-            sum_warn "flatpak: ${BOLD}${FLAT_COUNT}${RESET} pending  ${DIM}($(section_time $T))${RESET}"
+            sum_warn "flatpak: ${BOLD}${FLAT_COUNT}${RESET} pending (${FLAT_USER_COUNT} user, ${FLAT_SYS_COUNT} system)  ${DIM}($(section_time $T))${RESET}"
         else
-            flatpak update -y
-            success "Flatpaks updated"
-            sum_ok "flatpak: ${BOLD}${FLAT_COUNT}${RESET} updated  ${DIM}($(section_time $T))${RESET}"
+            FLAT_FAILED=0
+            if (( FLAT_USER_COUNT > 0 )); then
+                header "Updating user flatpaks"
+                if flatpak update -y --user; then
+                    success "User flatpaks updated"
+                else
+                    fail "User flatpak update reported an error"
+                    FLAT_FAILED=1
+                fi
+            fi
+            if (( FLAT_SYS_COUNT > 0 )); then
+                header "Updating system flatpaks"
+                if $SUDO flatpak update -y --system; then
+                    success "System flatpaks updated"
+                else
+                    fail "System flatpak update reported an error"
+                    FLAT_FAILED=1
+                fi
+            fi
+
+            if (( FLAT_FAILED )); then
+                sum_fail "flatpak: update failed  ${DIM}($(section_time $T))${RESET}"
+            else
+                sum_ok "flatpak: ${BOLD}${FLAT_COUNT}${RESET} updated (${FLAT_USER_COUNT} user, ${FLAT_SYS_COUNT} system)  ${DIM}($(section_time $T))${RESET}"
+            fi
         fi
     fi
 fi
@@ -284,8 +342,12 @@ if command -v fwupdmgr &>/dev/null; then
         if (( REPORT_ONLY )) || [[ "${ASSUME_YES}" == "1" ]]; then
             sum_warn "Firmware updates available (not applied)"
         elif confirm "Apply firmware updates? This may require a reboot."; then
-            $SUDO fwupdmgr update
-            sum_ok "Firmware updated"
+            if $SUDO fwupdmgr update; then
+                sum_ok "Firmware updated"
+            else
+                fail "Firmware update reported an error"
+                sum_fail "Firmware update failed"
+            fi
         else
             sum_skip "Firmware updates available (skipped)"
         fi
@@ -337,8 +399,12 @@ if command -v pihole &>/dev/null; then
         if [[ "${ASSUME_YES}" == "1" ]]; then
             sum_skip "Pi-hole: version upgrade skipped (needs a human, even with --yes)"
         elif confirm "Run 'pihole -up' to upgrade Pi-hole itself?"; then
-            $SUDO pihole -up
-            sum_ok "Pi-hole: upgraded"
+            if $SUDO pihole -up; then
+                sum_ok "Pi-hole: upgraded"
+            else
+                fail "Pi-hole upgrade reported an error"
+                sum_fail "Pi-hole: upgrade failed"
+            fi
         fi
     fi
 fi

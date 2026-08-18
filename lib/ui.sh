@@ -65,8 +65,15 @@ count_lines() {
     echo "$1" | grep -c . || true
 }
 
+# Safe to call more than once — only the first call prints. That lets scripts
+# trap this on EXIT as a safety net without double-printing when they also call
+# it on the normal path.
+SUMMARY_PRINTED=0
+
 print_summary() {
     local elapsed duration line
+    (( SUMMARY_PRINTED )) && return 0
+    SUMMARY_PRINTED=1
     elapsed=$(( SECONDS - START_TIME ))
     duration=$(format_duration "$elapsed")
 
