@@ -42,7 +42,17 @@ All three accept the same flags:
 
 ## Install
 
-To run it from anywhere without typing a path:
+One line, on macOS or Linux:
+
+```bash
+git clone https://github.com/cttech-io/SimpleUpdater.git ~/.local/share/simpleupdater && ~/.local/share/simpleupdater/install.sh
+```
+
+Then open a new shell and run `simple-updater --report`.
+
+The clone needs a permanent home because the installed command is a symlink back into it — clone to a temp directory and you'll get a dangling link the moment it's cleaned up. Anywhere durable works; `~/.local/share/simpleupdater` is just a sensible default.
+
+Already have the repo? Run the installer directly:
 
 ```bash
 ./install.sh
