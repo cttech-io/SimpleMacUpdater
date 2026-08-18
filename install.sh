@@ -53,6 +53,9 @@ ENTRY="$REPO_DIR/simple-updater.sh"
 [[ -n "$TARGET_DIR" ]] || TARGET_DIR="$HOME/.local/bin"
 # Expand a leading ~ so --dir '~/bin' behaves as expected.
 TARGET_DIR="${TARGET_DIR/#\~/$HOME}"
+# A relative --dir would produce a symlink that only resolves from the
+# directory you happened to run this from.
+[[ "$TARGET_DIR" == /* ]] || TARGET_DIR="$PWD/$TARGET_DIR"
 LINK_PATH="$TARGET_DIR/$LINK_NAME"
 
 banner "SimpleUpdater Installer" "$REPO_DIR"
@@ -173,6 +176,19 @@ else
         else
             skip "Left $RC alone — add the line above yourself when ready"
         fi
+    fi
+fi
+
+# ── Shadow check ─────────────────────────────────────────────────────────────
+# Being on PATH isn't enough — an earlier PATH entry with the same name wins,
+# and you'd run that instead without any indication why.
+if on_path "$TARGET_DIR"; then
+    RESOLVED="$(command -v "$LINK_NAME" 2>/dev/null || true)"
+    if [[ -n "$RESOLVED" && "$RESOLVED" != "$LINK_PATH" ]]; then
+        header "Name clash"
+        warn "'$LINK_NAME' on your PATH resolves to $RESOLVED"
+        note "  That comes earlier in PATH than $TARGET_DIR, so it wins."
+        note "  Reinstall under a different name: --name <something-else>"
     fi
 fi
 

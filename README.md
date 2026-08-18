@@ -40,11 +40,30 @@ All three accept the same flags:
 | `-y`, `--yes` | Don't prompt — apply the safe subset unattended (cron-friendly) |
 | `-h`, `--help` | Show help |
 
-`simple-updater.sh` resolves symlinks, so it's safe to put on your `PATH`:
+## Install
+
+To run it from anywhere without typing a path:
 
 ```bash
-ln -s "$PWD/simple-updater.sh" /usr/local/bin/update
-update --report
+./install.sh
+simple-updater --report
+```
+
+This symlinks the entry point into `~/.local/bin` — no `sudo` needed — and, if that directory isn't already on your `PATH`, offers to add it to your shell's rc file. It asks before touching any dotfile, and re-running it changes nothing that's already correct.
+
+| Flag | Effect |
+|------|--------|
+| `--name NAME` | Install under a different command name (default: `simple-updater`) |
+| `--dir DIR` | Link into a different directory (e.g. `/usr/local/bin`, usually needs sudo) |
+| `--uninstall` | Remove the link |
+| `-y`, `--yes` | Don't prompt before editing the shell rc file |
+
+It knows the right rc file per shell (`.zshrc`, `.bashrc` on Linux, `.bash_profile` on macOS) and prints the native `fish_add_path` command for fish rather than writing POSIX syntax into a fish config. It refuses to overwrite a file it didn't create, only ever removes links pointing back at this repo, and warns if something earlier on your `PATH` already owns the name.
+
+Prefer to do it by hand? `simple-updater.sh` resolves symlinks, so this works too:
+
+```bash
+ln -s "$PWD/simple-updater.sh" ~/.local/bin/update
 ```
 
 ## macOS
@@ -104,6 +123,7 @@ On Debian/Ubuntu, `--yes` also keeps existing config files rather than stopping 
 ## Layout
 
 ```
+install.sh           # optional — puts the entry point on your PATH
 simple-updater.sh    # entry point — detects the platform, delegates
 lib/ui.sh            # colours, banner, summary, timing, prompts — shared
 macos-updater.sh     # Homebrew, tldr, mas, softwareupdate
