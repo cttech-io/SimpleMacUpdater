@@ -116,3 +116,7 @@ linux-updater.sh     # native packages, snap, flatpak, fwupd, reports
 
 - **macOS:** bash 3.2+ (system bash is fine). Homebrew recommended but not required.
 - **Linux:** bash 4+, and one of the supported package managers. `sudo` unless running as root.
+
+## Licence
+
+[MIT](LICENSE)
