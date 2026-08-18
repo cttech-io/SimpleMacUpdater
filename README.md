@@ -19,18 +19,33 @@ Both print a summary at the end showing what changed per category, the time each
 
 ## Usage
 
+Run the same command on every machine — it detects the platform and hands off to the right updater:
+
+```bash
+./simple-updater.sh
+```
+
+Or call a platform script directly, if you prefer:
+
 ```bash
 ./macos-updater.sh          # macOS
 ./linux-updater.sh          # Linux
 ```
 
-Both accept the same flags:
+All three accept the same flags:
 
 | Flag | Effect |
 |------|--------|
 | `-n`, `--report` | Report what's available; change nothing |
 | `-y`, `--yes` | Don't prompt — apply the safe subset unattended (cron-friendly) |
 | `-h`, `--help` | Show help |
+
+`simple-updater.sh` resolves symlinks, so it's safe to put on your `PATH`:
+
+```bash
+ln -s "$PWD/simple-updater.sh" /usr/local/bin/update
+update --report
+```
 
 ## macOS
 
@@ -89,12 +104,13 @@ On Debian/Ubuntu, `--yes` also keeps existing config files rather than stopping 
 ## Layout
 
 ```
+simple-updater.sh    # entry point — detects the platform, delegates
 lib/ui.sh            # colours, banner, summary, timing, prompts — shared
 macos-updater.sh     # Homebrew, tldr, mas, softwareupdate
 linux-updater.sh     # native packages, snap, flatpak, fwupd, reports
 ```
 
-`lib/ui.sh` is sourced, not executed, and is kept compatible with bash 3.2 (the version macOS ships).
+`lib/ui.sh` is sourced, not executed, and is kept compatible with bash 3.2 (the version macOS ships). The scripts locate each other relative to their own path, so keep the layout intact — copy the directory, not individual files.
 
 ## Requirements
 
